@@ -530,6 +530,6 @@ jobs:
             - Tutuki services
             - Transport projects
             - careers.wellington.govt.nz
-          artifacts: "release-files/*"
+          artifacts: "all-artifacts/*"
           artifactErrorsFailBuild: true
           allowUpdates: true
