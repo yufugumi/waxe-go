@@ -26,10 +26,10 @@
   </head>
   <body>
     <h1>{{ test_name }} accessibility report - {{ date }}</h1>
-    {% for url, violations in results %}
+    {% for url, violations in results %} {% if violations %}
     <section>
       <h2>{{ url }}</h2>
-      {% if violations %} {% for violation in violations %}
+      {% for violation in violations %}
       <div class="violation">
         <h3>{{ violation.id }}: {{ violation.help }}</h3>
         <p>Impact: {{ violation.impact }}</p>
@@ -37,10 +37,8 @@
         <h4>HTML Location:</h4>
         <code>{{ violation.nodes[0].html|e }}</code>
       </div>
-      {% endfor %} {% else %}
-      <p>No violations found</p>
-      {% endif %}
+      {% endfor %}
     </section>
-    {% endfor %}
+    {% endif %} {% endfor %}
   </body>
 </html>

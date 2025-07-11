@@ -512,13 +512,16 @@ jobs:
           # Create release directory
           mkdir -p release-files
 
-          # Copy all files from downloaded artifacts (HTML reports and CSV files)
-          find all-artifacts -type f \( -name "*.html" -o -name "*.csv" \) -exec cp {} release-files/ \;
+          # Get current date in DD-MM-YYYY format to match file naming convention
+          CURRENT_DATE=$(date +'%d-%m-%Y')
+          echo "Looking for files with date: ${CURRENT_DATE}"
+
+          # Copy only files from downloaded artifacts that match today's date
+          find all-artifacts -type f \( -name "*${CURRENT_DATE}*.html" -o -name "*${CURRENT_DATE}*.csv" \) -exec cp {} release-files/ \;
 
           # List what we're about to release
           echo "Files to be released:"
           ls -la release-files/
-
       - name: Create a new release
         uses: ncipollo/release-action@v1
         with:
