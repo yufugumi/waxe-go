@@ -114,7 +114,10 @@ jobs:
         run: bun install
 
       - name: Install Playwright browsers
-        run: bunx playwright install chromium --with-deps
+        run: |
+          # Force clean install of browsers with matching versions
+          rm -rf ~/.cache/ms-playwright
+          bunx playwright install chromium --with-deps
 
       - name: Generate URLs for ${{ matrix.site }}
         run: |
