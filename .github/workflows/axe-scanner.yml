@@ -302,7 +302,24 @@ jobs:
           playwright install-deps
 
       - name: Generate URLs for archivesonline.wcc.govt.nz (capped)
-        run: npx sikemap https://archivesonline.wcc.govt.nz --max 400 --output urls/archives.txt
+        run: |
+          npx sikemap https://archivesonline.wcc.govt.nz --max 400 --output urls/archives.txt || {
+            echo "Sikemap failed, using fallback URL list"
+            cat > urls/archives.txt << 'EOF'
+          https://archivesonline.wcc.govt.nz/
+          https://archivesonline.wcc.govt.nz/nodes/browse
+          https://archivesonline.wcc.govt.nz/nodes/definesearch
+          https://archivesonline.wcc.govt.nz/pages/history
+          https://archivesonline.wcc.govt.nz/pages/contact
+          https://archivesonline.wcc.govt.nz/pages/aboutus
+          https://archivesonline.wcc.govt.nz/pages/accessstatement
+          https://archivesonline.wcc.govt.nz/pages/CommunityArchive
+          https://archivesonline.wcc.govt.nz/pages/help
+          https://archivesonline.wcc.govt.nz/pages/property
+          https://archivesonline.wcc.govt.nz/pages/Familyhistory
+          https://archivesonline.wcc.govt.nz/users/register
+          EOF
+          }
 
       - name: Run archivesonline.wcc.govt.nz scan
         uses: nick-fields/retry@v2
