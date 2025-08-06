@@ -26,7 +26,6 @@ jobs:
   accessibility-scan:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 800
-    if: ${{ github.event.inputs.scan_filter == 'all' || github.event.inputs.scan_filter == matrix.site || github.event_name == 'schedule' }}
 
     strategy:
       fail-fast: false
@@ -148,6 +147,7 @@ jobs:
           git diff --staged --quiet || git commit -m "${{ matrix.commit_message }}"
 
       - name: Run ${{ matrix.site }} axe scan
+        if: ${{ github.event_name == 'schedule' || github.event.inputs.scan_filter == 'all' || github.event.inputs.scan_filter == matrix.site }}
         uses: nick-fields/retry@v3
         with:
           timeout_minutes: 420
