@@ -1,2 +1,0 @@
-URL,Step,Impact,Description,Issue,More information,CSS selector
-/alcohol-licensing/temporary-authority/step/payment/,1,moderate,Ensures the order of headings is semantically correct,Heading levels should only increase by one,https://dequeuniversity.com/rules/axe/4.9/heading-order?application=playwright,.pt-0.xl\:gap-4.lg\:flex > h4

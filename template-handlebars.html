@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ test_name }} accessibility report {{ date }}</title>
+    <style>
+      body {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+        font-family: system-ui, sans-serif;
+      }
+      .violation {
+        border-left: 4px solid #ff4444;
+        margin: 20px 0;
+        padding: 10px;
+      }
+      code {
+        background: #f5f5f5;
+        padding: 8px;
+        display: block;
+        overflow-x: auto;
+      }
+      .no-violations {
+        color: green;
+        font-weight: bold;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>{{ test_name }} accessibility report - {{ date }}</h1>
+    {{#each results}} {{#if this.violations.length}}
+    <section>
+      <h2>{{ this.url }}</h2>
+      {{#each this.violations}}
+      <div class="violation">
+        <h3>{{ this.id }}: {{ this.help }}</h3>
+        <p>Impact: {{ this.impact }}</p>
+        <p>{{ this.description }}</p>
+        {{#if this.nodes.length}}
+        <h4>HTML Location:</h4>
+        <code>{{ this.nodes.0.html }}</code>
+        {{/if}}
+      </div>
+      {{/each}}
+    </section>
+    {{else}} {{/if}} {{/each}}
+  </body>
+</html>

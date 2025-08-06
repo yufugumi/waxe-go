@@ -2,20 +2,39 @@
   "name": "wellington-axe",
   "version": "0.1.1",
   "private": true,
-  "scripts": {},
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/axe-scanner.tsx",
+    "scan": "tsx src/axe-scanner-simple.ts",
+    "scan-ui": "tsx src/axe-scanner.tsx",
+    "sitemap": "tsx src/sitemap-generator.ts",
+    "test": "bunx playwright test",
+    "test:ui": "bunx playwright test --ui",
+    "lint": "bunx eslint .",
+    "typecheck": "bunx tsc --noEmit"
+  },
   "dependencies": {
-    "@axe-core/playwright": "^4.9.1",
+    "@axe-core/playwright": "^4.10.2",
+    "crawlee": "^3.14.1",
     "csv-writer": "^1.6.0",
-    "fs-extra": "^11.3.0",
+    "date-fns": "^4.1.0",
+    "fs-extra": "^11.3.1",
     "handlebars": "^4.7.8",
-    "playwright": "^1.45.1"
+    "ink": "^6.1.0",
+    "playwright": "^1.54.2",
+    "react": "^19.1.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.51.1",
+    "@types/bun": "latest",
+    "@types/fs-extra": "^11.0.4",
+    "@types/handlebars": "^4.1.0",
     "@types/node": "^20",
+    "@types/react": "^19.1.9",
     "dotenv": "^16.4.7",
     "eslint": "^8",
     "eslint-config-next": "14.2.3",
+    "tsx": "^4.20.3",
     "typescript": "^5"
   }
 }

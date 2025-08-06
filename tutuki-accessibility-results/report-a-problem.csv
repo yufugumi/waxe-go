@@ -1,4 +1,0 @@
-URL,Step,Impact,Description,Issue,More information,CSS selector
-/report/,1,critical,Ensures buttons have discernible text,Buttons must have discernible text,https://dequeuniversity.com/rules/axe/4.9/button-name?application=playwright,.w-8.h-8.m-2:nth-child(1)
-/report/,1,critical,Ensures buttons have discernible text,Buttons must have discernible text,https://dequeuniversity.com/rules/axe/4.9/button-name?application=playwright,.w-8.h-8.m-2:nth-child(2)
-/report/,1,critical,Ensures buttons have discernible text,Buttons must have discernible text,https://dequeuniversity.com/rules/axe/4.9/button-name?application=playwright,.w-8.h-8.m-2:nth-child(3)

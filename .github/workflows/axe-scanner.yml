@@ -23,424 +23,157 @@ on:
           - careers
 
 jobs:
-  wellington-scan:
-    runs-on: blacksmith-8vcpu-ubuntu-2204
+  accessibility-scan:
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 800
-    if: ${{ github.event.inputs.scan_filter == 'all' || github.event.inputs.scan_filter == 'wellington' || github.event_name == 'schedule' }}
+    if: ${{ github.event.inputs.scan_filter == 'all' || github.event.inputs.scan_filter == matrix.site || github.event_name == 'schedule' }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - site: wellington
+            sitemap_url: https://wellington.govt.nz/sitemap.xml
+            url_file: urls/wellington.txt
+            commit_message: "Update wellington.govt.nz URL list"
+            artifact_name: wellington-a11y-reports
+            artifact_path: reports/accessibility-report-wellington-govt-nz-*.html
+            runner: blacksmith-8vcpu-ubuntu-2204
+            max_urls: ""
+            fallback_urls: ""
+
+          - site: letstalk
+            sitemap_url: https://www.letstalk.wellington.govt.nz/sitemap.xml
+            url_file: urls/letstalk.txt
+            commit_message: "Update letstalk.wellington.govt.nz URL list"
+            artifact_name: letstalk-a11y-reports
+            artifact_path: reports/accessibility-report-lets-talk-*.html
+            runner: blacksmith-4vcpu-ubuntu-2204
+            max_urls: ""
+            fallback_urls: ""
+
+          - site: transportprojects
+            sitemap_url: https://www.transportprojects.org.nz/sitemap.xml
+            url_file: urls/transportprojects.txt
+            commit_message: "Update transportprojects.org.nz URL list"
+            artifact_name: transportprojects-a11y-reports
+            artifact_path: reports/accessibility-report-transportprojects-*.html
+            runner: blacksmith-4vcpu-ubuntu-2204
+            max_urls: ""
+            fallback_urls: ""
+
+          - site: archives
+            sitemap_url: https://archivesonline.wcc.govt.nz/sitemap-nodes-00001.xml
+            url_file: urls/archives.txt
+            commit_message: "Update archivesonline.wcc.govt.nz URL list"
+            artifact_name: archives-a11y-reports
+            artifact_path: reports/accessibility-report-archives-online-*.html
+            runner: blacksmith-4vcpu-ubuntu-2204
+            max_urls: "--max 400"
+            fallback_urls: |
+              https://archivesonline.wcc.govt.nz/
+              https://archivesonline.wcc.govt.nz/nodes/browse
+              https://archivesonline.wcc.govt.nz/nodes/definesearch
+              https://archivesonline.wcc.govt.nz/pages/history
+              https://archivesonline.wcc.govt.nz/pages/contact
+              https://archivesonline.wcc.govt.nz/pages/aboutus
+              https://archivesonline.wcc.govt.nz/pages/accessstatement
+              https://archivesonline.wcc.govt.nz/pages/CommunityArchive
+              https://archivesonline.wcc.govt.nz/pages/help
+              https://archivesonline.wcc.govt.nz/pages/property
+              https://archivesonline.wcc.govt.nz/pages/Familyhistory
+              https://archivesonline.wcc.govt.nz/users/register
+
+          - site: careers
+            sitemap_url: https://careers.wellington.govt.nz/sitemap.xml
+            url_file: urls/careers.txt
+            commit_message: "Update careers.wellington.govt.nz URL list"
+            artifact_name: careers-a11y-reports
+            artifact_path: reports/accessibility-report-careers-*.html
+            runner: blacksmith-4vcpu-ubuntu-2204
+            max_urls: "--max 400"
+            fallback_urls: ""
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: useblacksmith/setup-python@v6
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          python-version: "3.10"
+          bun-version: latest
 
-      - name: Cache pip packages
-        id: pip-cache
+      - name: Cache Bun packages
+        id: bun-cache
         uses: useblacksmith/cache@v5
         with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb') }}
           restore-keys: |
-            ${{ runner.os }}-pip-
+            ${{ runner.os }}-bun-
 
       - name: Cache Playwright
         id: playwright-cache
         uses: useblacksmith/cache@v5
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('**/requirements.txt') }}
+          key: ${{ runner.os }}-playwright-${{ hashFiles('**/package.json') }}
           restore-keys: |
             ${{ runner.os }}-playwright-
 
-      - name: Install dependencies (from cache)
-        if: steps.pip-cache.outputs.cache-hit == 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
+      - name: Install dependencies
         run: |
-          echo "Using cached dependencies"
-          python -m pip install --upgrade pip
-          pip install --no-cache-dir -r requirements.txt
-          npx playwright install --with-deps
+          bun install
+          bun playwright install chromium
 
-      - name: Install dependencies (fresh)
-        if: steps.pip-cache.outputs.cache-hit != 'true' || steps.playwright-cache.outputs.cache-hit != 'true'
+      - name: Generate URLs for ${{ matrix.site }}
         run: |
-          echo "Installing fresh dependencies"
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          playwright install
-          playwright install-deps
-
-      - name: Generate URLs for wellington.govt.nz
-        run: trafilatura --sitemap -u https://wellington.govt.nz/sitemap.xml --list > urls/wellington.txt
-
-      - name: Run wellington.govt.nz axe scan
-        uses: nick-fields/retry@v2
-        with:
-          timeout_minutes: 420
-          max_attempts: 2
-          command: python axe-scanner.py --site wellington
-
-      - name: Upload wellington scan results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: wellington-a11y-reports-${{ env.SCAN_TIMESTAMP }}
-          path: reports/accessibility-report-wellington-govt-nz-*.html
-          retention-days: 30
-
-      - name: Commit changes
-        run: |
-          git pull
-          git config --global user.name 'GitHub Actions'
-          git config --global user.email 'actions@github.com'
-          git add urls/ logs/ reports/
-          git commit -m "New a11y report for wellington.govt.nz" || echo "No changes to commit"
-          git push
-
-  letstalk-scan:
-    runs-on: blacksmith-4vcpu-ubuntu-2204
-    timeout-minutes: 800
-    if: ${{ github.event.inputs.scan_filter == 'all' || github.event.inputs.scan_filter == 'letstalk' || github.event_name == 'schedule' }}
-
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: useblacksmith/setup-python@v6
-        with:
-          python-version: "3.10"
-
-      - name: Cache pip packages
-        id: pip-cache
-        uses: useblacksmith/cache@v5
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
-      - name: Cache Playwright
-        id: playwright-cache
-        uses: useblacksmith/cache@v5
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-
-
-      - name: Install dependencies (from cache)
-        if: steps.pip-cache.outputs.cache-hit == 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
-        run: |
-          echo "Using cached dependencies"
-          python -m pip install --upgrade pip
-          pip install --no-cache-dir -r requirements.txt
-          npx playwright install --with-deps
-
-      - name: Install dependencies (fresh)
-        if: steps.pip-cache.outputs.cache-hit != 'true' || steps.playwright-cache.outputs.cache-hit != 'true'
-        run: |
-          echo "Installing fresh dependencies"
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          playwright install
-          playwright install-deps
-
-      - name: Generate URLs for letstalk.wellington.govt.nz
-        run: trafilatura --sitemap -u https://www.letstalk.wellington.govt.nz/sitemap.xml --list > urls/letstalk.txt
-
-      - name: Run letstalk.wellington.govt.nz scan
-        uses: nick-fields/retry@v2
-        with:
-          timeout_minutes: 420
-          max_attempts: 2
-          command: python axe-scanner.py --site letstalk
-
-      - name: Upload letstalk scan results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: letstalk-a11y-reports-${{ env.SCAN_TIMESTAMP }}
-          path: reports/accessibility-report-lets-talk-*.html
-          retention-days: 30
-
-      - name: Commit letstalk.wellington.govt.nz changes
-        run: |
-          git pull
-          git config --global user.name 'GitHub Actions'
-          git config --global user.email 'actions@github.com'
-          git add urls/ logs/ reports/
-          git commit -m "New a11y report for letstalk.wellington.govt.nz" || echo "No changes to commit"
-          git push
-
-  transportprojects-scan:
-    runs-on: blacksmith-4vcpu-ubuntu-2204
-    timeout-minutes: 800
-    if: ${{ github.event.inputs.scan_filter == 'all' || github.event.inputs.scan_filter == 'transportprojects' || github.event_name == 'schedule' }}
-
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: useblacksmith/setup-python@v6
-        with:
-          python-version: "3.10"
-
-      - name: Cache pip packages
-        id: pip-cache
-        uses: useblacksmith/cache@v5
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
-      - name: Cache Playwright
-        id: playwright-cache
-        uses: useblacksmith/cache@v5
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-
-
-      - name: Install dependencies (from cache)
-        if: steps.pip-cache.outputs.cache-hit == 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
-        run: |
-          echo "Using cached dependencies"
-          python -m pip install --upgrade pip
-          pip install --no-cache-dir -r requirements.txt
-          npx playwright install --with-deps
-
-      - name: Install dependencies (fresh)
-        if: steps.pip-cache.outputs.cache-hit != 'true' || steps.playwright-cache.outputs.cache-hit != 'true'
-        run: |
-          echo "Installing fresh dependencies"
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          playwright install
-          playwright install-deps
-
-      - name: Generate URLs for transportproject.org.nz
-        run: trafilatura --sitemap -u https://www.transportprojects.org.nz/sitemap.xml --list > urls/transportprojects.txt
-
-      - name: Run transportprojects.org.nz scan
-        uses: nick-fields/retry@v2
-        with:
-          timeout_minutes: 420
-          max_attempts: 2
-          command: python axe-scanner.py --site transportprojects
-
-      - name: Upload transportprojects scan results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: transportprojects-a11y-reports-${{ env.SCAN_TIMESTAMP }}
-          path: reports/accessibility-report-transportprojects-*.html
-          retention-days: 30
-
-      - name: Commit transportprojects.org.nz changes
-        run: |
-          git pull
-          git config --global user.name 'GitHub Actions'
-          git config --global user.email 'actions@github.com'
-          git add urls/ logs/ reports/
-          git commit -m "New a11y report for transportprojects.org.nz" || echo "No changes to commit"
-          git push
-
-  archives-online-scan:
-    runs-on: blacksmith-4vcpu-ubuntu-2204
-    timeout-minutes: 800
-    if: ${{ github.event.inputs.scan_filter == 'all' || github.event.inputs.scan_filter == 'archives' || github.event_name == 'schedule' }}
-
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: useblacksmith/setup-python@v6
-        with:
-          python-version: "3.10"
-
-      - name: Setup Node.js
-        uses: useblacksmith/setup-node@v5
-        with:
-          node-version: "22"
-
-      - name: Cache pip packages
-        id: pip-cache
-        uses: useblacksmith/cache@v5
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
-      - name: Cache Playwright
-        id: playwright-cache
-        uses: useblacksmith/cache@v5
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-
-
-      - name: Install dependencies (from cache)
-        if: steps.pip-cache.outputs.cache-hit == 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
-        run: |
-          echo "Using cached dependencies"
-          python -m pip install --upgrade pip
-          pip install --no-cache-dir -r requirements.txt
-          npx playwright install --with-deps
-
-      - name: Install dependencies (fresh)
-        if: steps.pip-cache.outputs.cache-hit != 'true' || steps.playwright-cache.outputs.cache-hit != 'true'
-        run: |
-          echo "Installing fresh dependencies"
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          playwright install
-          playwright install-deps
-
-      - name: Generate URLs for archivesonline.wcc.govt.nz (capped)
-        run: |
-          npx sikemap https://archivesonline.wcc.govt.nz --max 400 --output urls/archives.txt || {
-            echo "Sikemap failed, using fallback URL list"
-            cat > urls/archives.txt << 'EOF'
-          https://archivesonline.wcc.govt.nz/
-          https://archivesonline.wcc.govt.nz/nodes/browse
-          https://archivesonline.wcc.govt.nz/nodes/definesearch
-          https://archivesonline.wcc.govt.nz/pages/history
-          https://archivesonline.wcc.govt.nz/pages/contact
-          https://archivesonline.wcc.govt.nz/pages/aboutus
-          https://archivesonline.wcc.govt.nz/pages/accessstatement
-          https://archivesonline.wcc.govt.nz/pages/CommunityArchive
-          https://archivesonline.wcc.govt.nz/pages/help
-          https://archivesonline.wcc.govt.nz/pages/property
-          https://archivesonline.wcc.govt.nz/pages/Familyhistory
-          https://archivesonline.wcc.govt.nz/users/register
+          if [ "${{ matrix.site }}" = "archives" ] && [ -n "${{ matrix.fallback_urls }}" ]; then
+            # Special handling for archives with fallback
+            bun run sitemap ${{ matrix.sitemap_url }} ${{ matrix.max_urls }} --output ${{ matrix.url_file }} || {
+              echo "Sitemap generation failed, using fallback URL list"
+              cat > ${{ matrix.url_file }} << 'EOF'
+          ${{ matrix.fallback_urls }}
           EOF
-          }
+            }
+          else
+            # Standard sitemap generation
+            bun run sitemap ${{ matrix.sitemap_url }} ${{ matrix.max_urls }} --output ${{ matrix.url_file }}
+          fi
 
-      - name: Run archivesonline.wcc.govt.nz scan
-        uses: nick-fields/retry@v2
+      - name: Commit URL list updates
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add ${{ matrix.url_file }}
+          git diff --staged --quiet || git commit -m "${{ matrix.commit_message }}"
+
+      - name: Run ${{ matrix.site }} axe scan
+        uses: nick-fields/retry@v3
         with:
           timeout_minutes: 420
           max_attempts: 2
-          command: python axe-scanner.py --site archives
+          command: bun run scan --site=${{ matrix.site }}
 
-      - name: Upload archives scan results
+      - name: Upload ${{ matrix.site }} scan results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: archives-a11y-reports-${{ env.SCAN_TIMESTAMP }}
-          path: reports/accessibility-report-archives-online-*.html
+          name: ${{ matrix.artifact_name }}-${{ env.SCAN_TIMESTAMP }}
+          path: ${{ matrix.artifact_path }}
           retention-days: 30
 
-      - name: Commit archivesonline.wcc.govt.nz changes
-        run: |
-          git pull
-          git config --global user.name 'GitHub Actions'
-          git config --global user.email 'actions@github.com'
-          git add urls/ logs/ reports/
-          git commit -m "New a11y report for archivesonline.wcc.govt.nz" || echo "No changes to commit"
-          git push
-
-  careers-scan:
-    runs-on: blacksmith-4vcpu-ubuntu-2204
-    timeout-minutes: 800
-    if: ${{ github.event.inputs.scan_filter == 'all' || github.event.inputs.scan_filter == 'careers' || github.event_name == 'schedule' }}
-
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: useblacksmith/setup-python@v6
-        with:
-          python-version: "3.10"
-
-      - name: Setup Node.js
-        uses: useblacksmith/setup-node@v5
-        with:
-          node-version: "22"
-
-      - name: Cache pip packages
-        id: pip-cache
-        uses: useblacksmith/cache@v5
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
-      - name: Cache Playwright
-        id: playwright-cache
-        uses: useblacksmith/cache@v5
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-
-
-      - name: Install dependencies (from cache)
-        if: steps.pip-cache.outputs.cache-hit == 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
-        run: |
-          echo "Using cached dependencies"
-          python -m pip install --upgrade pip
-          pip install --no-cache-dir -r requirements.txt
-          npx playwright install --with-deps
-
-      - name: Install dependencies (fresh)
-        if: steps.pip-cache.outputs.cache-hit != 'true' || steps.playwright-cache.outputs.cache-hit != 'true'
-        run: |
-          echo "Installing fresh dependencies"
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          npm install -g sitemap-generator-cli
-          playwright install
-          playwright install-deps
-
-      - name: Generate URLs for careers.wellington.govt.nz
-        run: npx sikemap https://careers.wellington.govt.nz --max 400 --output urls/careers.txt
-
-      - name: Run careers.wellington.govt.nz scan
-        uses: nick-fields/retry@v2
-        with:
-          timeout_minutes: 420
-          max_attempts: 2
-          command: python axe-scanner.py --site careers
-
-      - name: Upload careers scan results
+      - name: Push URL list changes
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: careers-a11y-reports-${{ env.SCAN_TIMESTAMP }}
-          path: reports/accessibility-report-careers-*.html
-          retention-days: 30
-
-      - name: Commit careers.wellington.govt.nz changes
-        run: |
-          git pull
-          git config --global user.name 'GitHub Actions'
-          git config --global user.email 'actions@github.com'
-          git add urls/ logs/ reports/
-          git commit -m "New a11y report for careers.wellington.govt.nz" || echo "No changes to commit"
-          git push
+        run: git push origin || true
 
   create-release:
     runs-on: ubuntu-latest
     # Run after all jobs have completed (regardless of success/failure), only on schedule
     if: ${{ always() && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.scan_filter == 'all')) }}
-    needs:
-      [
-        wellington-scan,
-        letstalk-scan,
-        archives-online-scan,
-        transportprojects-scan,
-        careers-scan,
-      ]
+    needs: [accessibility-scan]
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -464,30 +197,51 @@ jobs:
           # Create release directory
           mkdir -p release-files
 
-          # Get current date in DD-MM-YYYY format to match file naming convention
-          CURRENT_DATE=$(date +'%d-%m-%Y')
-          echo "Looking for files with date: ${CURRENT_DATE}"
+          # Get current date in multiple formats to be flexible
+          CURRENT_DATE_1=$(date +'%d-%m-%Y')
+          CURRENT_DATE_2=$(date +'%Y-%m-%d')
+          echo "Looking for files with dates: ${CURRENT_DATE_1} or ${CURRENT_DATE_2}"
 
-          # Copy only files from downloaded artifacts that match today's date
-          find all-artifacts -type f \( -name "*${CURRENT_DATE}*.html" -o -name "*${CURRENT_DATE}*.csv" \) -exec cp {} release-files/ \;
+          # First, copy all HTML files from artifacts (since they are accessibility reports)
+          find all-artifacts -type f -name "*.html" -exec cp {} release-files/ \; || true
+
+          # Also copy any CSV files if they exist
+          find all-artifacts -type f -name "*.csv" -exec cp {} release-files/ \; || true
 
           # List what we're about to release
           echo "Files to be released:"
           ls -la release-files/
+
+          # Count files
+          FILE_COUNT=$(find release-files -type f | wc -l)
+          echo "Total files found: ${FILE_COUNT}"
+
+          if [ "${FILE_COUNT}" -eq 0 ]; then
+            echo "No files found to release"
+            echo "CREATE_RELEASE=false" >> $GITHUB_ENV
+          else
+            echo "CREATE_RELEASE=true" >> $GITHUB_ENV
+          fi
+
       - name: Create a new release
+        if: env.CREATE_RELEASE == 'true'
         uses: ncipollo/release-action@v1
         with:
           tag: ${{ steps.tag_version.outputs.new_tag }}
-          name: "Monthly accessibilty reports"
+          name: "Monthly accessibility reports"
           body: |
             # Reports - ${{ steps.tag_version.outputs.date }}
 
             These reports include automated accessibility scan results for:
             - wellington.govt.nz
             - letstalk.wellington.govt.nz
-            - Archives online
-            - Transport projects
+            - archivesonline.wcc.govt.nz
+            - transportprojects.org.nz
             - careers.wellington.govt.nz
           artifacts: "release-files/*"
-          artifactErrorsFailBuild: true
+          artifactErrorsFailBuild: false
           allowUpdates: true
+
+      - name: No files to release
+        if: env.CREATE_RELEASE == 'false'
+        run: echo "No accessibility report files were found to create a release with."
