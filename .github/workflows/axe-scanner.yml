@@ -56,7 +56,7 @@ jobs:
             sitemap_url: https://www.wcl.govt.nz/sitemap.xml
             url_file: urls/wcl.txt
             commit_message: "Update wcl.govt.nz URL list"
-            artifact_name: letstalk-a11y-reports
+            artifact_name: library-a11y-reports
             artifact_path: reports/accessibility-report-wcl-*.html
             runner: blacksmith-4vcpu-ubuntu-2204
             max_urls: ""

@@ -16,6 +16,11 @@ const siteConfigs: Record<string, SiteConfig> = {
     logFile: "wellington.log",
     excludeRules: ["duplicate-id-active"],
   },
+  library: {
+    urlFile: "wcl.txt",
+    testName: "wcl",
+    logFile: "wcl.log",
+  },
   letstalk: {
     urlFile: "letstalk.txt",
     testName: "lets-talk",
