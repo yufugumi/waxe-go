@@ -66,6 +66,7 @@ export async function processUrl(
   semaphore: { acquire: () => Promise<void>; release: () => void },
   progressBar: ProgressTracker,
   excludeRules?: string[],
+  userAgent?: string,
 ): Promise<ProcessResult> {
   const maxRetries = 2;
   let retryCount = 0;
@@ -78,7 +79,7 @@ export async function processUrl(
 
       context = await browser.newContext({
         viewport: { width: 1280, height: 720 },
-        userAgent: "WAXE accessibility testing bot",
+        userAgent: userAgent || "WAXE accessibility testing bot",
       });
 
       // Block Google Analytics and GTM requests
@@ -171,6 +172,7 @@ export async function processUrl(
 export async function processUrls(
   urls: string[],
   excludeRules?: string[],
+  userAgent?: string,
 ): Promise<ProcessResult[]> {
   const results: ProcessResult[] = [];
   const maxConcurrent = 10;
@@ -198,7 +200,7 @@ export async function processUrls(
       const chunk = urls.slice(i, i + chunkSize);
 
       const chunkPromises = chunk.map((url) =>
-        processUrl(url, browser, semaphore, progressBar, excludeRules),
+        processUrl(url, browser, semaphore, progressBar, excludeRules, userAgent),
       );
 
       const chunkResults = await Promise.all(chunkPromises);
@@ -246,7 +248,7 @@ export async function runAccessibilityScan(config: ScanConfig): Promise<void> {
 
     log(`Starting accessibility scan of ${urls.length} URLs`);
 
-    const results = await processUrls(urls, excludeRules);
+    const results = await processUrls(urls, excludeRules, config.userAgent);
 
     const templateContent = await fs.readFile(
       "template-handlebars.html",

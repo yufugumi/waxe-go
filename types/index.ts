@@ -3,6 +3,7 @@ export interface SiteConfig {
   testName: string;
   logFile: string;
   excludeRules?: string[];
+  userAgent?: string;
 }
 
 export interface SitemapOptions {
