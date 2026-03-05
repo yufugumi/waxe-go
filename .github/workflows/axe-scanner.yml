@@ -36,7 +36,7 @@ jobs:
             sitemap_url: https://wellington.govt.nz/sitemap.xml
             base_url: https://wellington.govt.nz
             artifact_name: wellington-a11y-reports
-            artifact_path: reports/accessibility-report-wellington-govt-nz-*.html
+            artifact_path: reports/*
             runner: blacksmith-8vcpu-ubuntu-2204
             max_urls: ""
             fallback_urls: ""
@@ -45,7 +45,7 @@ jobs:
             sitemap_url: https://www.letstalk.wellington.govt.nz/sitemap.xml
             base_url: https://www.letstalk.wellington.govt.nz
             artifact_name: letstalk-a11y-reports
-            artifact_path: reports/accessibility-report-lets-talk-*.html
+            artifact_path: reports/*
             runner: blacksmith-4vcpu-ubuntu-2204
             max_urls: ""
             fallback_urls: ""
@@ -54,7 +54,7 @@ jobs:
             sitemap_url: https://www.wcl.govt.nz/sitemap.xml
             base_url: https://www.wcl.govt.nz
             artifact_name: library-a11y-reports
-            artifact_path: reports/accessibility-report-wcl-*.html
+            artifact_path: reports/*
             runner: blacksmith-4vcpu-ubuntu-2204
             max_urls: ""
             fallback_urls: ""
@@ -63,7 +63,7 @@ jobs:
             sitemap_url: https://www.transportprojects.org.nz/sitemap.xml
             base_url: https://www.transportprojects.org.nz
             artifact_name: transportprojects-a11y-reports
-            artifact_path: reports/accessibility-report-transportprojects-*.html
+            artifact_path: reports/*
             runner: blacksmith-4vcpu-ubuntu-2204
             max_urls: ""
             fallback_urls: ""
@@ -72,7 +72,7 @@ jobs:
             sitemap_url: https://archivesonline.wcc.govt.nz/sitemap-nodes-00001.xml
             base_url: https://archivesonline.wcc.govt.nz
             artifact_name: archives-a11y-reports
-            artifact_path: reports/accessibility-report-archives-online-*.html
+            artifact_path: reports/*
             runner: blacksmith-4vcpu-ubuntu-2204
             max_urls: "400"
             fallback_urls: |
@@ -93,7 +93,7 @@ jobs:
             sitemap_url: https://careers.wellington.govt.nz/sitemap.xml
             base_url: https://careers.wellington.govt.nz
             artifact_name: careers-a11y-reports
-            artifact_path: reports/accessibility-report-careers-*.html
+            artifact_path: reports/*
             runner: blacksmith-4vcpu-ubuntu-2204
             max_urls: "400"
             fallback_urls: ""
@@ -152,6 +152,7 @@ jobs:
           WAXE_FALLBACK_URLS: ${{ contains(matrix.fallback_urls, '://') && matrix.fallback_urls || '' }}
           WAXE_FALLBACK_URLS_FILE: ${{ !contains(matrix.fallback_urls, '://') && matrix.fallback_urls || '' }}
           WAXE_MAX_URLS: ${{ matrix.max_urls }}
+          WAXE_OUTPUT_DIR: reports
           CHROME_PATH: ${{ env.CHROME_PATH }}
 
       - name: Upload ${{ matrix.site }} scan results
