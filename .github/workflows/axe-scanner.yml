@@ -34,8 +34,7 @@ jobs:
         include:
           - site: wellington
             sitemap_url: https://wellington.govt.nz/sitemap.xml
-            url_file: urls/wellington.txt
-            commit_message: "Update wellington.govt.nz URL list"
+            base_url: https://wellington.govt.nz
             artifact_name: wellington-a11y-reports
             artifact_path: reports/accessibility-report-wellington-govt-nz-*.html
             runner: blacksmith-8vcpu-ubuntu-2204
@@ -44,8 +43,7 @@ jobs:
 
           - site: letstalk
             sitemap_url: https://www.letstalk.wellington.govt.nz/sitemap.xml
-            url_file: urls/letstalk.txt
-            commit_message: "Update letstalk.wellington.govt.nz URL list"
+            base_url: https://www.letstalk.wellington.govt.nz
             artifact_name: letstalk-a11y-reports
             artifact_path: reports/accessibility-report-lets-talk-*.html
             runner: blacksmith-4vcpu-ubuntu-2204
@@ -54,8 +52,7 @@ jobs:
 
           - site: library
             sitemap_url: https://www.wcl.govt.nz/sitemap.xml
-            url_file: urls/wcl.txt
-            commit_message: "Update wcl.govt.nz URL list"
+            base_url: https://www.wcl.govt.nz
             artifact_name: library-a11y-reports
             artifact_path: reports/accessibility-report-wcl-*.html
             runner: blacksmith-4vcpu-ubuntu-2204
@@ -64,8 +61,7 @@ jobs:
 
           - site: transportprojects
             sitemap_url: https://www.transportprojects.org.nz/sitemap.xml
-            url_file: urls/transportprojects.txt
-            commit_message: "Update transportprojects.org.nz URL list"
+            base_url: https://www.transportprojects.org.nz
             artifact_name: transportprojects-a11y-reports
             artifact_path: reports/accessibility-report-transportprojects-*.html
             runner: blacksmith-4vcpu-ubuntu-2204
@@ -74,12 +70,11 @@ jobs:
 
           - site: archives
             sitemap_url: https://archivesonline.wcc.govt.nz/sitemap-nodes-00001.xml
-            url_file: urls/archives.txt
-            commit_message: "Update archivesonline.wcc.govt.nz URL list"
+            base_url: https://archivesonline.wcc.govt.nz
             artifact_name: archives-a11y-reports
             artifact_path: reports/accessibility-report-archives-online-*.html
             runner: blacksmith-4vcpu-ubuntu-2204
-            max_urls: "--max 400"
+            max_urls: "400"
             fallback_urls: |
               https://archivesonline.wcc.govt.nz/
               https://archivesonline.wcc.govt.nz/nodes/browse
@@ -96,79 +91,36 @@ jobs:
 
           - site: careers
             sitemap_url: https://careers.wellington.govt.nz/sitemap.xml
-            url_file: urls/careers.txt
-            commit_message: "Update careers.wellington.govt.nz URL list"
+            base_url: https://careers.wellington.govt.nz
             artifact_name: careers-a11y-reports
             artifact_path: reports/accessibility-report-careers-*.html
             runner: blacksmith-4vcpu-ubuntu-2204
-            max_urls: "--max 400"
+            max_urls: "400"
             fallback_urls: ""
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - name: Install Chromium
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y chromium
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
-          bun-version: latest
+          go-version: "1.21"
+          cache: true
 
-      - name: Cache Bun packages
-        id: bun-cache
-        uses: useblacksmith/cache@v5
+      - name: Cache scanner binary
+        id: axed-cache
+        uses: actions/cache@v4
         with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
+          path: axed
+          key: ${{ runner.os }}-axed-${{ hashFiles('**/*.go', 'go.sum') }}
 
-      - name: Install dependencies
-        run: |
-          # Force clean install with exact versions to prevent mismatches
-          rm -rf node_modules
-          bun install --frozen-lockfile
-
-      - name: Install Playwright browsers
-        run: |
-          # First, check what versions are actually installed
-          echo "=== Playwright package versions ==="
-          bunx playwright --version
-          
-          # Remove any existing browser installations to prevent version conflicts
-          rm -rf ~/.cache/ms-playwright
-          
-          # Install browsers ensuring version consistency
-          bunx playwright install chromium --with-deps
-          
-          # Verify the installation using install --dry-run
-          echo "=== Verifying installation ==="
-          bunx playwright install --dry-run chromium
-          
-          # Check the actual browser executable path
-          echo "=== Browser installation paths ==="
-          find ~/.cache/ms-playwright -name "*chromium*" -type d 2>/dev/null || echo "No chromium directories found"
-          find ~/.cache/ms-playwright -name "chrome*" -type f -executable 2>/dev/null | head -5 || echo "No chrome executables found"
-
-      - name: Generate URLs for ${{ matrix.site }}
-        run: |
-          if [ "${{ matrix.site }}" = "archives" ] && [ -n "${{ matrix.fallback_urls }}" ]; then
-            # Special handling for archives with fallback
-            bun run sitemap ${{ matrix.sitemap_url }} ${{ matrix.max_urls }} --output ${{ matrix.url_file }} || {
-              echo "Sitemap generation failed, using fallback URL list"
-              cat > ${{ matrix.url_file }} << 'EOF'
-          ${{ matrix.fallback_urls }}
-          EOF
-            }
-          else
-            # Standard sitemap generation
-            bun run sitemap ${{ matrix.sitemap_url }} ${{ matrix.max_urls }} --output ${{ matrix.url_file }}
-          fi
-
-      - name: Commit URL list updates
-        run: |
-          git config --global user.name 'GitHub Actions'
-          git config --global user.email 'actions@github.com'
-          git add ${{ matrix.url_file }}
-          git diff --staged --quiet || git commit -m "${{ matrix.commit_message }}"
+      - name: Build scanner binary
+        run: go build -ldflags="-s -w" -o axed ./cmd/scanner
 
       - name: Run ${{ matrix.site }} axe scan
         if: ${{ github.event_name == 'schedule' || github.event.inputs.scan_filter == 'all' || github.event.inputs.scan_filter == matrix.site }}
@@ -176,7 +128,15 @@ jobs:
         with:
           timeout_minutes: 420
           max_attempts: 2
-          command: bun run scan --site=${{ matrix.site }}
+          command: ./axed scan --site=${{ matrix.site }}
+        env:
+          WAXE_SITEMAP_URL: ${{ matrix.sitemap_url }}
+          WAXE_BASE_URL: ${{ matrix.base_url }}
+          WAXE_ALLOW_SITEMAP_OVERRIDE: "true"
+          WAXE_FALLBACK_URLS: ${{ contains(matrix.fallback_urls, '://') && matrix.fallback_urls || '' }}
+          WAXE_FALLBACK_URLS_FILE: ${{ !contains(matrix.fallback_urls, '://') && matrix.fallback_urls || '' }}
+          WAXE_MAX_URLS: ${{ matrix.max_urls }}
+          CHROME_PATH: /usr/bin/chromium
 
       - name: Upload ${{ matrix.site }} scan results
         if: always()
@@ -186,9 +146,6 @@ jobs:
           path: ${{ matrix.artifact_path }}
           retention-days: 30
 
-      - name: Push URL list changes
-        if: always()
-        run: git push origin || true
 
   create-release:
     runs-on: ubuntu-latest
