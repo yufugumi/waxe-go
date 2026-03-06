@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yufugumi/waxe-go/internal/config"
 	"github.com/yufugumi/waxe-go/internal/scanner"
 	"github.com/yufugumi/waxe-go/internal/sitemap"
 	"github.com/yufugumi/waxe-go/internal/useragent"
@@ -79,7 +78,7 @@ func runScanFromBaseURL(ctx context.Context, rawBaseURL string, options scanner.
 		if err != nil {
 			return err
 		}
-		return runScanWithURLs(ctx, config.SiteConfig{TestName: fmt.Sprintf("Sitemap %s", base.Hostname())}, finalURLs, options)
+		return runScanWithURLs(ctx, scanTarget{TestName: fmt.Sprintf("Sitemap %s", base.Hostname())}, finalURLs, options)
 	}
 
 	maxURLs, err := maxURLsFromEnv()
@@ -102,7 +101,7 @@ func runScanFromBaseURL(ctx context.Context, rawBaseURL string, options scanner.
 		return err
 	}
 
-	return runScanWithURLs(ctx, config.SiteConfig{TestName: fmt.Sprintf("Crawl %s", base.Hostname())}, finalURLs, options)
+	return runScanWithURLs(ctx, scanTarget{TestName: fmt.Sprintf("Crawl %s", base.Hostname())}, finalURLs, options)
 }
 
 func normalizeBaseURL(raw string) (*url.URL, error) {

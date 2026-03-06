@@ -1,11 +1,11 @@
 #!/bin/sh
 set -e
 
-# Install script for axed (WAXE accessibility scanner)
+# Install script for axel (WAXE accessibility scanner)
 # Usage: curl -sSfL https://raw.githubusercontent.com/yufugumi/waxe-go/main/install.sh | sh
 
 REPO="github.com/yufugumi/waxe-go"
-BINARY_NAME="axed"
+BINARY_NAME="axel"
 INSTALL_DIR="${INSTALL_DIR:-${HOME}/.local/bin}"
 
 main() {

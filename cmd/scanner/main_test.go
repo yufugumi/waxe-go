@@ -40,24 +40,24 @@ func TestScanCommand(t *testing.T) {
 	nowFn = func() time.Time { return fixedTime }
 	defer func() { nowFn = previousNow }()
 
-	restoreSiteURL := setEnvForTest(t, "WAXE_BASE_URL", server.URL)
-	restoreTestSitemapURL := setEnvForTest(t, "WAXE_TEST_SITEMAP_URL", server.URL+"/sitemap.xml")
 	restoreOutputDir := setEnvForTest(t, "WAXE_OUTPUT_DIR", outputDir)
 	defer func() {
-		restoreSiteURL()
-		restoreTestSitemapURL()
 		restoreOutputDir()
 	}()
 
 	previousArgs := os.Args
-	os.Args = []string{"axed", "scan", "--site=test"}
+	os.Args = []string{"axel", "scan", server.URL}
 	defer func() { os.Args = previousArgs }()
 
 	if err := NewRootCommand().Execute(); err != nil {
 		t.Fatalf("scan command failed: %v", err)
 	}
 
-	reportPath := filepath.Join(outputDir, "Test Site-"+date+".html")
+	parsedURL, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("parse server URL: %v", err)
+	}
+	reportPath := filepath.Join(outputDir, "Sitemap "+parsedURL.Hostname()+"-"+date+".html")
 	if _, err := os.Stat(reportPath); err != nil {
 		t.Fatalf("expected report file at %s: %v", reportPath, err)
 	}
@@ -68,8 +68,8 @@ func TestScanCommand(t *testing.T) {
 	}
 
 	reportBody := string(report)
-	if !strings.Contains(reportBody, "Test Site") {
-		t.Fatalf("expected report to include test name")
+	if !strings.Contains(reportBody, "Sitemap ") {
+		t.Fatalf("expected report to include derived test name")
 	}
 	if !strings.Contains(reportBody, server.URL+"/page") {
 		t.Fatalf("expected report to include scanned URL")
@@ -111,7 +111,7 @@ func TestScanCommandWithSitemapURLFlag(t *testing.T) {
 	}()
 
 	previousArgs := os.Args
-	os.Args = []string{"axed", "scan", "--sitemap-url", server.URL + "/sitemap.xml"}
+	os.Args = []string{"axel", "scan", "--sitemap-url", server.URL + "/sitemap.xml"}
 	defer func() { os.Args = previousArgs }()
 
 	if err := NewRootCommand().Execute(); err != nil {
@@ -141,57 +141,17 @@ func TestScanCommandWithSitemapURLFlag(t *testing.T) {
 	}
 }
 
-func TestScanCommandUsesEnvSitemapWhenSiteMissing(t *testing.T) {
-	sitemapXML := `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url>
-    <loc>/page</loc>
-  </url>
-</urlset>`
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/sitemap.xml":
-			w.Header().Set("Content-Type", "application/xml")
-			_, _ = w.Write([]byte(sitemapXML))
-		case "/page":
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_, _ = w.Write([]byte("<html><head><title>Test</title></head><body>ok</body></html>"))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-
-	outputDir := t.TempDir()
-	fixedTime := time.Date(2026, time.March, 4, 11, 10, 0, 0, time.UTC)
-	date := fixedTime.Format("2006-01-02")
-	previousNow := nowFn
-	nowFn = func() time.Time { return fixedTime }
-	defer func() { nowFn = previousNow }()
-
-	restoreOutputDir := setEnvForTest(t, "WAXE_OUTPUT_DIR", outputDir)
-	restoreSitemapURL := setEnvForTest(t, "WAXE_SITEMAP_URL", server.URL+"/sitemap.xml")
-	defer func() {
-		restoreOutputDir()
-		restoreSitemapURL()
-	}()
-
+func TestScanCommandRequiresInput(t *testing.T) {
 	previousArgs := os.Args
-	os.Args = []string{"axed", "scan"}
+	os.Args = []string{"axel", "scan"}
 	defer func() { os.Args = previousArgs }()
 
-	if err := NewRootCommand().Execute(); err != nil {
-		t.Fatalf("scan command failed: %v", err)
+	err := NewRootCommand().Execute()
+	if err == nil {
+		t.Fatalf("expected error when no base URL or sitemap URL is provided")
 	}
-
-	parsedURL, err := url.Parse(server.URL)
-	if err != nil {
-		t.Fatalf("parse server URL: %v", err)
-	}
-	reportPath := filepath.Join(outputDir, "Sitemap "+parsedURL.Hostname()+"-"+date+".html")
-	if _, err := os.Stat(reportPath); err != nil {
-		t.Fatalf("expected report file at %s: %v", reportPath, err)
+	if !strings.Contains(err.Error(), "base URL or sitemap URL is required") {
+		t.Fatalf("expected missing input error, got %v", err)
 	}
 }
 
@@ -241,7 +201,7 @@ func TestScanCommandDefaultsOutputDirToCwd(t *testing.T) {
 	}()
 
 	previousArgs := os.Args
-	os.Args = []string{"axed", "scan"}
+	os.Args = []string{"axel", "scan", server.URL}
 	defer func() { os.Args = previousArgs }()
 
 	if err := NewRootCommand().Execute(); err != nil {
@@ -258,43 +218,17 @@ func TestScanCommandDefaultsOutputDirToCwd(t *testing.T) {
 	}
 }
 
-func TestScanCommandRejectsEnvSitemapWithSiteFlag(t *testing.T) {
-	sitemapXML := `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url>
-    <loc>/page</loc>
-  </url>
-</urlset>`
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/sitemap.xml":
-			w.Header().Set("Content-Type", "application/xml")
-			_, _ = w.Write([]byte(sitemapXML))
-		case "/page":
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_, _ = w.Write([]byte("<html><head><title>Test</title></head><body>ok</body></html>"))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-
-	restoreSitemapURL := setEnvForTest(t, "WAXE_SITEMAP_URL", server.URL+"/sitemap.xml")
-	defer func() {
-		restoreSitemapURL()
-	}()
-
+func TestScanCommandRejectsPositionalBaseURLWithSitemapFlag(t *testing.T) {
 	previousArgs := os.Args
-	os.Args = []string{"axed", "scan", "--site=test"}
+	os.Args = []string{"axel", "scan", "https://example.com", "--sitemap-url", "https://example.com/sitemap.xml"}
 	defer func() { os.Args = previousArgs }()
 
 	err := NewRootCommand().Execute()
 	if err == nil {
-		t.Fatalf("expected error when WAXE_SITEMAP_URL is set with --site")
+		t.Fatalf("expected error when positional base URL and --sitemap-url are both set")
 	}
-	if !strings.Contains(err.Error(), "WAXE_SITEMAP_URL") {
-		t.Fatalf("expected error to mention WAXE_SITEMAP_URL, got %v", err)
+	if !strings.Contains(err.Error(), "positional base URL cannot be used with --sitemap-url") {
+		t.Fatalf("expected flag conflict error, got %v", err)
 	}
 }
 

@@ -146,9 +146,18 @@ func TestScanURLsDefaultsToNoRetries(t *testing.T) {
 	defer server.Close()
 
 	urls := []string{server.URL}
-	_, err := ScanURLs(ctx, urls, 1, nil, DefaultPerURLTimeout)
-	if err == nil {
-		t.Fatalf("expected error when no retries are configured")
+	results, err := ScanURLs(ctx, urls, 1, nil, DefaultPerURLTimeout)
+	if err != nil {
+		t.Fatalf("expected no package-level error when no retries are configured, got %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0] == nil {
+		t.Fatalf("expected non-nil result")
+	}
+	if results[0].Error == "" {
+		t.Fatalf("expected per-URL error when no retries are configured")
 	}
 
 	observedRequests := atomic.LoadInt64(&requestCount)

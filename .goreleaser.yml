@@ -1,0 +1,101 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - id: axel
+    main: ./cmd/scanner
+    binary: axel
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - id: default
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - typo
+  groups:
+    - title: " Features"
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: " Bug Fixes"
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: " Performance"
+      regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: " Refactoring"
+      regexp: '^.*?refactor(\([[:word:]]+\))??!?:.+$'
+      order: 3
+    - title: " Documentation"
+      regexp: '^.*?docs(\([[:word:]]+\))??!?:.+$'
+      order: 4
+    - title: " Maintenance"
+      regexp: '^.*?(chore|build)(\([[:word:]]+\))??!?:.+$'
+      order: 5
+    - title: Others
+      order: 999
+
+release:
+  github:
+    owner: yufugumi
+    name: axel
+  draft: false
+  prerelease: auto
+  mode: replace
+  header: |
+    ## axel {{ .Tag }} ({{ .Date }})
+
+    See the [installation instructions](https://github.com/yufugumi/axel#installation) for how to install axel.
+  footer: |
+    **Full Changelog**: https://github.com/yufugumi/axel/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+    ## Installation
+
+    ### Using Homebrew (macOS/Linux)
+    ```bash
+    brew install yufugumi/tap/axel
+    ```
+
+    ### Binary downloads
+    Download the appropriate binary for your platform from the assets below.
+
+    ### From source
+    ```bash
+    go install github.com/yufugumi/axel/cmd/scanner@{{ .Tag }}
+    ```
+
+milestones:
+  - close: true
+    fail_on_error: false

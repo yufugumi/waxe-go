@@ -15,7 +15,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/yufugumi/waxe-go/internal/config"
 	"github.com/yufugumi/waxe-go/internal/reporter"
 	"github.com/yufugumi/waxe-go/internal/scanner"
 	"github.com/yufugumi/waxe-go/internal/sitemap"
@@ -24,6 +23,11 @@ import (
 var version = "dev"
 
 var nowFn = time.Now
+
+type scanTarget struct {
+	TestName     string
+	ExcludeRules []string
+}
 
 func main() {
 	if err := NewRootCommand().Execute(); err != nil {
@@ -36,8 +40,8 @@ func main() {
 
 func NewRootCommand() *cobra.Command {
 	rootCmd := &cobra.Command{
-		Use:     "axed",
-		Short:   "Run WAXE accessibility scans",
+		Use:     "axel",
+		Short:   "Run accessibility scans",
 		Version: version,
 	}
 
@@ -47,7 +51,6 @@ func NewRootCommand() *cobra.Command {
 }
 
 func newScanCommand() *cobra.Command {
-	var site string
 	var sitemapURL string
 	var baseURL string
 	var timeout time.Duration
@@ -59,7 +62,7 @@ func newScanCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "scan [base-url]",
-		Short: "Scan a configured site",
+		Short: "Scan a site using a sitemap or base URL",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -92,8 +95,8 @@ func newScanCommand() *cobra.Command {
 				positionalBaseURL = strings.TrimSpace(args[0])
 			}
 			if positionalBaseURL != "" {
-				if site != "" || strings.TrimSpace(sitemapURL) != "" {
-					return fmt.Errorf("positional base URL cannot be used with --site or --sitemap-url")
+				if strings.TrimSpace(sitemapURL) != "" {
+					return fmt.Errorf("positional base URL cannot be used with --sitemap-url")
 				}
 				if cmd.Flags().Changed("base-url") {
 					return fmt.Errorf("--base-url cannot be used with positional base URL")
@@ -101,25 +104,15 @@ func newScanCommand() *cobra.Command {
 				return runScanFromBaseURL(ctx, positionalBaseURL, buildScanOptions(timeout, workers, maxRetries, retryDelay, chunkDelay, maxChunkDelay))
 			}
 
-			if err := validateSitemapOverrides(site, sitemapURL); err != nil {
-				return err
-			}
-			effectiveSitemapURL := resolveSitemapURL(site, sitemapURL)
-			if site == "" && effectiveSitemapURL == "" {
-				return fmt.Errorf("site or sitemap URL is required")
-			}
-			if site != "" && effectiveSitemapURL != "" {
-				return fmt.Errorf("site and sitemap URL cannot be used together")
-			}
+			effectiveSitemapURL := resolveSitemapURL(sitemapURL)
 			if effectiveSitemapURL == "" {
-				return runScanFromSite(ctx, site, buildScanOptions(timeout, workers, maxRetries, retryDelay, chunkDelay, maxChunkDelay))
+				return fmt.Errorf("base URL or sitemap URL is required")
 			}
 
 			return runScanFromSitemap(ctx, effectiveSitemapURL, baseURL, buildScanOptions(timeout, workers, maxRetries, retryDelay, chunkDelay, maxChunkDelay))
 		},
 	}
 
-	cmd.Flags().StringVar(&site, "site", "", "Site name to scan")
 	cmd.Flags().StringVar(&sitemapURL, "sitemap-url", "", "Sitemap URL to scan")
 	cmd.Flags().StringVar(&baseURL, "base-url", "", "Base URL for resolving relative sitemap entries")
 	cmd.Flags().DurationVar(&timeout, "timeout", scanner.DefaultPerURLTimeout, "Per-URL timeout (e.g., 30s, 1m)")
@@ -132,26 +125,14 @@ func newScanCommand() *cobra.Command {
 	return cmd
 }
 
-func runScanFromSite(ctx context.Context, site string, options scanner.ScanOptions) error {
-	siteConfig, err := loadSiteConfig(site)
-	if err != nil {
-		return err
-	}
-
-	sitemapURL, baseURL := resolveSitemapOverrides(siteConfig, site)
-
-	return runScanWithConfig(ctx, siteConfig, sitemapURL, baseURL, options)
-}
-
 func runScanFromSitemap(ctx context.Context, sitemapURL string, baseURL string, options scanner.ScanOptions) error {
 	resolvedSitemapURL, err := normalizeSitemapURL(sitemapURL)
 	if err != nil {
 		return err
 	}
 
-	siteConfig := config.SiteConfig{
+	target := scanTarget{
 		TestName: deriveTestNameFromSitemap(resolvedSitemapURL),
-		URL:      resolvedSitemapURL,
 	}
 
 	resolvedBaseURL, err := resolveBaseURLOverride(baseURL, resolvedSitemapURL)
@@ -159,10 +140,10 @@ func runScanFromSitemap(ctx context.Context, sitemapURL string, baseURL string, 
 		return err
 	}
 
-	return runScanWithConfig(ctx, siteConfig, resolvedSitemapURL, resolvedBaseURL, options)
+	return runScanWithConfig(ctx, target, resolvedSitemapURL, resolvedBaseURL, options)
 }
 
-func runScanWithConfig(ctx context.Context, siteConfig config.SiteConfig, sitemapURL string, baseURL string, options scanner.ScanOptions) error {
+func runScanWithConfig(ctx context.Context, target scanTarget, sitemapURL string, baseURL string, options scanner.ScanOptions) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -193,10 +174,10 @@ func runScanWithConfig(ctx context.Context, siteConfig config.SiteConfig, sitema
 		return err
 	}
 
-	return runScanWithURLs(ctx, siteConfig, finalURLs, options)
+	return runScanWithURLs(ctx, target, finalURLs, options)
 }
 
-func runScanWithURLs(ctx context.Context, siteConfig config.SiteConfig, urls []string, options scanner.ScanOptions) error {
+func runScanWithURLs(ctx context.Context, target scanTarget, urls []string, options scanner.ScanOptions) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -207,7 +188,7 @@ func runScanWithURLs(ctx context.Context, siteConfig config.SiteConfig, urls []s
 	progressReporter, stopProgress := newProgressPrinter(len(urls))
 	defer stopProgress()
 
-	options.ExcludeRules = siteConfig.ExcludeRules
+	options.ExcludeRules = target.ExcludeRules
 	options.Reporter = progressReporter
 	results, err := scanner.ScanURLsWithOptions(ctx, urls, options)
 	if err != nil {
@@ -229,7 +210,7 @@ func runScanWithURLs(ctx context.Context, siteConfig config.SiteConfig, urls []s
 	}
 
 	date := nowFn().Format("2006-01-02")
-	report, err := reporter.Generate(results, siteConfig.TestName, date)
+	report, err := reporter.Generate(results, target.TestName, date)
 	if err != nil {
 		return err
 	}
@@ -239,7 +220,7 @@ func runScanWithURLs(ctx context.Context, siteConfig config.SiteConfig, urls []s
 		return err
 	}
 
-	reportName := safeFilename(siteConfig.TestName)
+	reportName := safeFilename(target.TestName)
 	reportPath := filepath.Join(outputDir, fmt.Sprintf("%s-%s.html", reportName, date))
 	if err := os.WriteFile(reportPath, report, 0o644); err != nil {
 		return err
@@ -318,84 +299,12 @@ func resolveEnvDuration(cmd *cobra.Command, flagName string, envKey string, curr
 	return value, nil
 }
 
-func loadSiteConfig(site string) (config.SiteConfig, error) {
-	siteConfig, ok := config.Sites[site]
-	if !ok {
-		return config.SiteConfig{}, fmt.Errorf("unknown site: %s", site)
-	}
-
-	return siteConfig, nil
-}
-
-func resolveSitemapOverrides(siteConfig config.SiteConfig, site string) (string, string) {
-	sitemapURL := siteConfig.URL
-	baseURL := ""
-
-	if override := strings.TrimSpace(os.Getenv("WAXE_SITEMAP_URL")); override != "" {
-		if allowSitemapOverrideFromEnv() {
-			sitemapURL = override
-		}
-	}
-	if override := strings.TrimSpace(os.Getenv("WAXE_BASE_URL")); override != "" {
-		baseURL = override
-	}
-
-	if site != "test" {
-		return sitemapURL, baseURL
-	}
-
-	if sitemapURL == siteConfig.URL {
-		if override := strings.TrimSpace(os.Getenv("WAXE_TEST_SITEMAP_URL")); override != "" {
-			sitemapURL = override
-		}
-	}
-
-	if baseURL == "" {
-		if override := strings.TrimSpace(os.Getenv("WAXE_TEST_SITE_URL")); override != "" {
-			baseURL = override
-		}
-	}
-
-	return sitemapURL, baseURL
-}
-
-func resolveSitemapURL(site string, cliSitemapURL string) string {
+func resolveSitemapURL(cliSitemapURL string) string {
 	trimmed := sitemap.SanitizeLoc(cliSitemapURL)
 	if trimmed != "" {
 		return trimmed
 	}
-	if site != "" {
-		return ""
-	}
 	return sitemap.SanitizeLoc(os.Getenv("WAXE_SITEMAP_URL"))
-}
-
-func validateSitemapOverrides(site string, cliSitemapURL string) error {
-	if strings.TrimSpace(site) == "" {
-		return nil
-	}
-	if strings.TrimSpace(cliSitemapURL) != "" {
-		return nil
-	}
-	if override := strings.TrimSpace(os.Getenv("WAXE_SITEMAP_URL")); override != "" {
-		if allowSitemapOverrideFromEnv() {
-			return nil
-		}
-		return fmt.Errorf("WAXE_SITEMAP_URL cannot be used with --site; use --sitemap-url instead")
-	}
-	return nil
-}
-
-func allowSitemapOverrideFromEnv() bool {
-	value := strings.TrimSpace(os.Getenv("WAXE_ALLOW_SITEMAP_OVERRIDE"))
-	if value == "" {
-		return false
-	}
-	parsed, err := strconv.ParseBool(value)
-	if err != nil {
-		return false
-	}
-	return parsed
 }
 
 func normalizeSitemapURL(raw string) (string, error) {
