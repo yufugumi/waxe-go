@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/cdproto/network"
@@ -16,6 +17,9 @@ func NewAllocator(ctx context.Context) (context.Context, context.CancelFunc) {
 		chromedp.Flag("headless", true),
 		chromedp.Flag("disable-gpu", true),
 		chromedp.Flag("no-sandbox", true),
+		// CI runners can be slow to boot Chrome under race detector.
+		// Extend the websocket startup wait to avoid flaky timeouts.
+		chromedp.WSURLReadTimeout(60*time.Second),
 	)
 
 	if chromePath := os.Getenv("CHROME_PATH"); chromePath != "" {
