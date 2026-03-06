@@ -1,4 +1,4 @@
-name: Create tag
+name: Create git tag
 
 on:
   workflow_dispatch:
@@ -73,5 +73,6 @@ jobs:
         run: |
           {
             echo "Created tag $VERSION from $TARGET."
+            echo "This workflow only creates the git tag. GitHub releases are published by commits to main/master."
             echo
           } >> "$GITHUB_STEP_SUMMARY"

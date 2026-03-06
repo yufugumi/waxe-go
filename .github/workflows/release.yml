@@ -2,8 +2,9 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
+      - master
 
 permissions:
   contents: write
@@ -13,7 +14,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  validate:
+    uses: ./.github/workflows/validate.yml
+
   goreleaser:
+    needs: validate
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -21,22 +26,53 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Compute release tag
+        id: release_tag
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          short_sha=$(printf '%s' "$COMMIT_SHA" | cut -c1-12)
+          echo "value=v0.0.0-${short_sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Create release tag
+        env:
+          RELEASE_TAG: ${{ steps.release_tag.outputs.value }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            git fetch --tags origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          else
+            git tag -a "$RELEASE_TAG" "$GITHUB_SHA" -m "Release $RELEASE_TAG"
+            git push origin "refs/tags/$RELEASE_TAG"
+          fi
+
+      - name: Checkout release tag
+        env:
+          RELEASE_TAG: ${{ steps.release_tag.outputs.value }}
+        run: git checkout --detach "$RELEASE_TAG"
+
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: 'go.mod'
+          go-version-file: "go.mod"
           cache: true
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
-          version: '~> v2'
+          version: "~> v2"
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Trigger Go module reindex
+        env:
+          RELEASE_TAG: ${{ steps.release_tag.outputs.value }}
         # Note: This GET request notifies proxy.golang.org about the new version.
         # The || true handles cases where the proxy is unavailable or already indexed.
-        run: curl -sSf "https://proxy.golang.org/github.com/yufugumi/axel/@v/${{ github.ref_name }}.info" || true
+        run: curl -sSf "https://proxy.golang.org/github.com/yufugumi/axel/@v/$RELEASE_TAG.info" || true

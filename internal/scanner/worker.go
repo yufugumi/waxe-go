@@ -101,10 +101,7 @@ func ScanURLsWithOptions(ctx context.Context, urls []string, options ScanOptions
 	defer browserCancel()
 
 	for start := 0; start < len(urls); start += scanChunkSize {
-		end := start + scanChunkSize
-		if end > len(urls) {
-			end = len(urls)
-		}
+		end := min(start+scanChunkSize, len(urls))
 
 		if err := scanChunk(ctx, browserCtx, urls, start, end, options, results, progress); err != nil {
 			return nil, err
@@ -144,10 +141,7 @@ func scanChunk(
 	defer cancel()
 
 	jobCount := end - start
-	workerCount := options.Workers
-	if workerCount > jobCount {
-		workerCount = jobCount
-	}
+	workerCount := min(options.Workers, jobCount)
 
 	jobs := make(chan urlJob)
 	resultCh := make(chan urlResult, jobCount)
@@ -165,7 +159,7 @@ func scanChunk(
 	}
 
 	var wg sync.WaitGroup
-	for i := 0; i < workerCount; i++ {
+	for range workerCount {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -269,6 +263,37 @@ func scanURL(ctx context.Context, allocCtx context.Context, url string, options 
 		return nil, err
 	}
 
+	var lastErr error
+	maxAttempts := options.MaxRetries + 1
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
+		result, err := scanURLAttempt(ctx, allocCtx, url, options)
+		if err == nil {
+			return result, nil
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		lastErr = err
+		if attempt < maxAttempts-1 {
+			if err := sleepWithContext(ctx, options.RetryDelay); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		return &ScanResult{URL: url, Timestamp: time.Now(), Error: lastErr.Error()}, nil
+	}
+
+	if lastErr == nil {
+		lastErr = fmt.Errorf("retries exhausted")
+	}
+	return &ScanResult{URL: url, Timestamp: time.Now(), Error: lastErr.Error()}, nil
+}
+
+func scanURLAttempt(ctx context.Context, allocCtx context.Context, url string, options ScanOptions) (*ScanResult, error) {
 	tabParentCtx, tabParentCancel := context.WithCancel(allocCtx)
 	go func() {
 		select {
@@ -281,89 +306,42 @@ func scanURL(ctx context.Context, allocCtx context.Context, url string, options 
 	browserCtx, cancel := browser.NewTab(tabParentCtx)
 	defer cancel()
 	defer tabParentCancel()
+
 	if err := browser.BlockRequests(browserCtx, options.BlockMedia); err != nil {
-		return nil, fmt.Errorf("ScanURLs: block requests: %w", err)
+		return nil, fmt.Errorf("block requests: %w", err)
 	}
 
-	var lastErr error
-	maxAttempts := options.MaxRetries + 1
-	for attempt := 0; attempt < maxAttempts; attempt++ {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
+	attemptCtx, attemptCancel := context.WithTimeout(browserCtx, options.PerURLTimeout)
+	defer attemptCancel()
 
-		attemptCtx, attemptCancel := context.WithTimeout(browserCtx, options.PerURLTimeout)
-		if err := browser.Navigate(attemptCtx, url); err != nil {
-			attemptCancel()
-			if ctx.Err() != nil {
-				return nil, ctx.Err()
-			}
-			if attemptCtx.Err() != nil {
-				lastErr = fmt.Errorf("navigate: %w", attemptCtx.Err())
-			} else {
-				lastErr = fmt.Errorf("navigate: %w", err)
-			}
-			if attempt < maxAttempts-1 {
-				if err := sleepWithContext(ctx, options.RetryDelay); err != nil {
-					return nil, err
-				}
-				continue
-			}
-			return &ScanResult{URL: url, Timestamp: time.Now(), Error: lastErr.Error()}, nil
+	if err := browser.Navigate(attemptCtx, url); err != nil {
+		if attemptCtx.Err() != nil {
+			return nil, fmt.Errorf("navigate: %w", attemptCtx.Err())
 		}
-
-		if err := InjectAxeCore(attemptCtx); err != nil {
-			attemptCancel()
-			if ctx.Err() != nil {
-				return nil, ctx.Err()
-			}
-			if attemptCtx.Err() != nil {
-				lastErr = fmt.Errorf("inject axe: %w", attemptCtx.Err())
-			} else {
-				lastErr = fmt.Errorf("inject axe: %w", err)
-			}
-			if attempt < maxAttempts-1 {
-				if err := sleepWithContext(ctx, options.RetryDelay); err != nil {
-					return nil, err
-				}
-				continue
-			}
-			return &ScanResult{URL: url, Timestamp: time.Now(), Error: lastErr.Error()}, nil
-		}
-
-		violations, err := ExecuteAxe(attemptCtx, options.ExcludeRules)
-		if err != nil {
-			attemptCancel()
-			if ctx.Err() != nil {
-				return nil, ctx.Err()
-			}
-			if attemptCtx.Err() != nil {
-				lastErr = fmt.Errorf("execute axe: %w", attemptCtx.Err())
-			} else {
-				lastErr = fmt.Errorf("execute axe: %w", err)
-			}
-			if attempt < maxAttempts-1 {
-				if err := sleepWithContext(ctx, options.RetryDelay); err != nil {
-					return nil, err
-				}
-				continue
-			}
-			return &ScanResult{URL: url, Timestamp: time.Now(), Error: lastErr.Error()}, nil
-		}
-
-		result := &ScanResult{
-			URL:        url,
-			Violations: violations,
-			Timestamp:  time.Now(),
-		}
-		attemptCancel()
-		return result, nil
+		return nil, fmt.Errorf("navigate: %w", err)
 	}
 
-	if lastErr == nil {
-		lastErr = fmt.Errorf("retries exhausted")
+	if err := InjectAxeCore(attemptCtx); err != nil {
+		if attemptCtx.Err() != nil {
+			return nil, fmt.Errorf("inject axe: %w", attemptCtx.Err())
+		}
+		return nil, fmt.Errorf("inject axe: %w", err)
 	}
-	return &ScanResult{URL: url, Timestamp: time.Now(), Error: lastErr.Error()}, nil
+
+	violations, err := ExecuteAxe(attemptCtx, options.ExcludeRules)
+	if err != nil {
+		if attemptCtx.Err() != nil {
+			return nil, fmt.Errorf("execute axe: %w", attemptCtx.Err())
+		}
+		return nil, fmt.Errorf("execute axe: %w", err)
+	}
+
+	result := &ScanResult{
+		URL:        url,
+		Violations: violations,
+		Timestamp:  time.Now(),
+	}
+	return result, nil
 }
 
 func calculateChunkDelay(base time.Duration, max time.Duration, chunkIndex int) time.Duration {
